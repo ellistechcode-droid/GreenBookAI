@@ -2,6 +2,9 @@ from fastapi import FastAPI
 from dotenv import load_dotenv
 import os
 import requests
+from pydantic import BaseModel
+from app.services.recommendation_service import get_recommendations
+
 
 load_dotenv()
 
@@ -10,7 +13,6 @@ app = FastAPI(title="GreenBookAI")
 GEOAPIFY_API_KEY = os.getenv("GEOAPIFY_API_KEY")
 OPENWEATHER_API_KEY = os.getenv("OPENWEATHER_API_KEY")
 
-print("Weather Key:", OPENWEATHER_API_KEY)
 
 @app.get("/")
 def root():
@@ -53,4 +55,25 @@ def get_weather(city: str):
         "feels_like": data.get("main", {}).get("feels_like"),
         "condition": data.get("weather", [{}])[0].get("description"),
         "raw": data
+    }
+
+class TripRequest(BaseModel):
+    start_destination: str
+    prompt: str
+    budget: float
+
+
+@app.post("/recommend")
+def recommend_trip(request: TripRequest):
+    recommendations = get_recommendations(
+        start_destination=request.start_destination,
+        prompt=request.prompt,
+        budget=request.budget
+    )
+
+    return {
+        "user_prompt": request.prompt,
+        "start_destination": request.start_destination,
+        "budget": request.budget,
+        "recommendations": recommendations
     }
