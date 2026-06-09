@@ -1,6 +1,5 @@
 import re
 import os
-from click import prompt
 import requests
 import pandas as pd
 from dotenv import load_dotenv
@@ -180,9 +179,31 @@ def calculate_score(start_destination, destination, prompt, budget, nights):
 
 def get_recommendations(start_destination, prompt, budget):
     nights = extract_trip_length(prompt)
+    prompt_lower = prompt.lower()
     results = []
 
     for destination in load_destinations():
+        # Cheap local filtering before live API calls
+        estimated_total_cost = calculate_total_cost(
+            start_destination=start_destination,
+            destination=destination,
+            nights=nights
+        )
+
+        # Avoid obviously unaffordable options before calling weather API
+        if estimated_total_cost > budget * 1.3:
+            continue
+
+        # Prefer matching trip type when user clearly mentions one
+        known_trip_types = ["beach", "culture", "city", "nature"]
+        requested_trip_types = [
+            trip_type for trip_type in known_trip_types
+            if trip_type in prompt_lower
+        ]
+
+        if requested_trip_types and destination["trip_type"] not in requested_trip_types:
+            continue
+
         score, reasons, total_cost, estimated_flight_cost, weather = calculate_score(
             start_destination=start_destination,
             destination=destination,
@@ -209,5 +230,5 @@ def get_recommendations(start_destination, prompt, budget):
             "reasons": reasons
         })
 
-    return sorted(results, key=lambda x: x["score"], reverse=True)
+    return sorted(results, key=lambda x: x["score"], reverse=True)[:5]
 
