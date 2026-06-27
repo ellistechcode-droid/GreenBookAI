@@ -1,6 +1,7 @@
 annotated-doc==0.0.4
 annotated-types==0.7.0
 anyio==4.13.0
+beautifulsoup4==4.15.0
 certifi==2026.5.20
 charset-normalizer==3.4.7
 click==8.4.1
@@ -16,6 +17,7 @@ python-dateutil==2.9.0.post0
 python-dotenv==1.2.2
 requests==2.34.2
 six==1.17.0
+soupsieve==2.8.4
 starlette==1.1.0
 typing-inspection==0.4.2
 typing_extensions==4.15.0
