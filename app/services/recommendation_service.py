@@ -1,19 +1,14 @@
 import re
 import os
 import requests
-import pandas as pd
 from dotenv import load_dotenv
+from app.services.location_service import get_candidate_locations, get_or_discover_location
 from app.services.advisory_service import find_advisory_by_country, calculate_advisory_penalty
 
 
 load_dotenv()
 
 OPENWEATHER_API_KEY = os.getenv("OPENWEATHER_API_KEY")
-
-
-def load_destinations():
-    df = pd.read_csv("data/destinations.csv")
-    return df.to_dict(orient="records")
 
 
 def get_live_weather(city):
@@ -335,7 +330,9 @@ def get_recommendations(start_destination, prompt, budget):
     prompt_lower = prompt.lower()
     results = []
 
-    for destination in load_destinations():
+    origin = get_or_discover_location(start_destination)
+
+    for destination in get_candidate_locations():
         estimated_total_cost = calculate_total_cost(
             start_destination=start_destination,
             destination=destination,
@@ -365,6 +362,8 @@ def get_recommendations(start_destination, prompt, budget):
         )
 
         results.append({
+            "origin": origin["city"] if origin else start_destination,
+            "origin_found_in_dataset": origin is not None,
             "destination": destination["city"],
             "country": destination["country"],
             "region": destination["region"],
