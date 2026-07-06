@@ -125,11 +125,50 @@ def discover_location(city_name):
 
 def get_or_discover_location(city_name):
     """
-    First checks the local dataset. If missing, discovers the location using Geoapify.
+    First checks the local dataset. If missing, discovers the location using Geoapify
+    and saves it for future use.
     """
     location = get_location_by_city(city_name)
 
     if location:
+        location["source"] = "Local"
         return location
 
-    return discover_location(city_name)
+    discovered_location = discover_location(city_name)
+
+    if discovered_location:
+        return save_location(discovered_location)
+
+    return None
+
+def save_location(location):
+    """
+    Appends a newly discovered location to the travel locations CSV.
+    Prevents duplicates by checking city name first.
+    """
+    existing_location = get_location_by_city(location["city"])
+
+    if existing_location:
+        return existing_location
+
+    df = pd.read_csv(TRAVEL_LOCATIONS_FILE)
+
+    new_row = {
+        "city": location.get("city"),
+        "country": location.get("country"),
+        "region": location.get("region"),
+        "trip_type": location.get("trip_type", "unknown"),
+        "climate_tag": location.get("climate_tag", "unknown"),
+        "estimated_nightly_cost": location.get("estimated_nightly_cost", 150),
+        "safety_score": location.get("safety_score", 5),
+        "attraction_score": location.get("attraction_score", 5),
+        "latitude": location.get("latitude"),
+        "longitude": location.get("longitude")
+    }
+
+    df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
+    df.to_csv(TRAVEL_LOCATIONS_FILE, index=False)
+
+    clear_location_cache()
+
+    return location

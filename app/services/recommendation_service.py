@@ -4,7 +4,7 @@ import requests
 from dotenv import load_dotenv
 from app.services.location_service import get_candidate_locations, get_or_discover_location
 from app.services.advisory_service import find_advisory_by_country, calculate_advisory_penalty
-
+from app.services.travel_logistics_service import get_trip_pricing
 
 load_dotenv()
 
@@ -260,8 +260,16 @@ def calculate_score(start_destination, destination, prompt, budget, nights, trip
     score = 0
     reasons = []
 
-    total_cost = calculate_total_cost(start_destination, destination, nights)
     estimated_flight_cost = estimate_flight_cost(start_destination, destination)
+
+    pricing = get_trip_pricing(
+        origin=start_destination,
+        destination=destination,
+        nights=nights,
+        fallback_flight_cost=estimated_flight_cost
+    )
+
+    total_cost = pricing["estimated_total_cost"]
 
     if destination["trip_type"] in prompt:
         score += 30
@@ -321,8 +329,7 @@ def calculate_score(start_destination, destination, prompt, budget, nights, trip
     else:
         reasons.append("No travel advisory penalty applied")
 
-    return score, reasons, total_cost, estimated_flight_cost, weather, seasonal_weather, advisory
-
+    return score, reasons, total_cost, estimated_flight_cost, weather, seasonal_weather, advisory, pricing
 
 def get_recommendations(start_destination, prompt, budget):
     nights = extract_trip_length(prompt)
@@ -351,7 +358,7 @@ def get_recommendations(start_destination, prompt, budget):
         if requested_trip_types and destination["trip_type"] not in requested_trip_types:
             continue
 
-        score, reasons, total_cost, estimated_flight_cost, weather, seasonal_weather, advisory = calculate_score(
+        score, reasons, total_cost, estimated_flight_cost, weather, seasonal_weather, advisory, pricing = calculate_score(
             start_destination=start_destination,
             destination=destination,
             prompt=prompt,
@@ -373,6 +380,7 @@ def get_recommendations(start_destination, prompt, budget):
             "trip_length_nights": nights,
             "estimated_total_cost": total_cost,
             "estimated_flight_cost": estimated_flight_cost,
+            "pricing": pricing,
             "estimated_nightly_cost": destination["estimated_nightly_cost"],
             "safety_score": int(destination["safety_score"]),
             "attraction_score": int(destination["attraction_score"]),

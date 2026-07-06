@@ -4,7 +4,7 @@ import os
 import requests
 from pydantic import BaseModel
 from app.services.recommendation_service import get_recommendations
-
+from app.services.travel_logistics_service import test_serpapi_connection
 
 load_dotenv()
 
@@ -56,6 +56,10 @@ def get_weather(city: str):
         "condition": data.get("weather", [{}])[0].get("description"),
         "raw": data
     }
+
+@app.get("/test/serpapi")
+def test_serpapi():
+    return test_serpapi_connection()
 
 class TripRequest(BaseModel):
     start_destination: str

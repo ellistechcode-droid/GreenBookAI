@@ -2,7 +2,7 @@ city,country,region,trip_type,climate_tag,estimated_nightly_cost,safety_score,at
 Miami,USA,North America,beach,warm,200,6,9,25.7617,-80.1918
 San Juan,Puerto Rico,Caribbean,beach,warm,120,7,8,18.4655,-66.1057
 Cancun,Mexico,North America,beach,warm,150,5,9,21.1619,-86.8515
-Key West,USA,North America,beach,warm,230,8,8,24.5551,-81.7800
+Key West,USA,North America,beach,warm,230,8,8,24.5551,-81.78
 Barcelona,Spain,Europe,culture,warm,170,8,10,41.3874,2.1686
 Lisbon,Portugal,Europe,culture,warm,140,8,8,38.7223,-9.1393
 Athens,Greece,Europe,culture,warm,130,7,9,37.9838,23.7275
@@ -13,4 +13,5 @@ Phuket,Thailand,Asia,beach,warm,110,7,9,7.8804,98.3923
 Cape Town,South Africa,Africa,nature,mild,130,6,9,-33.9249,18.4241
 Marrakech,Morocco,Africa,culture,warm,100,6,8,31.6295,-7.9811
 Rio de Janeiro,Brazil,South America,beach,warm,120,5,10,-22.9068,-43.1729
-Cartagena,Colombia,South America,beach,warm,100,6,8,10.3910,-75.4794
+Cartagena,Colombia,South America,beach,warm,100,6,8,10.391,-75.4794
+Providence,United States,,unknown,unknown,150,5,5,41.8239891,-71.4128343
