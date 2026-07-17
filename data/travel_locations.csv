@@ -1,17 +1,55 @@
-city,country,region,trip_type,climate_tag,estimated_nightly_cost,safety_score,attraction_score,latitude,longitude
-Miami,USA,North America,beach,warm,200,6,9,25.7617,-80.1918
-San Juan,Puerto Rico,Caribbean,beach,warm,120,7,8,18.4655,-66.1057
-Cancun,Mexico,North America,beach,warm,150,5,9,21.1619,-86.8515
-Key West,USA,North America,beach,warm,230,8,8,24.5551,-81.78
-Barcelona,Spain,Europe,culture,warm,170,8,10,41.3874,2.1686
-Lisbon,Portugal,Europe,culture,warm,140,8,8,38.7223,-9.1393
-Athens,Greece,Europe,culture,warm,130,7,9,37.9838,23.7275
-Tokyo,Japan,Asia,city,mild,180,9,10,35.6762,139.6503
-Kyoto,Japan,Asia,culture,mild,160,9,9,35.0116,135.7681
-Bangkok,Thailand,Asia,city,warm,90,6,9,13.7563,100.5018
-Phuket,Thailand,Asia,beach,warm,110,7,9,7.8804,98.3923
-Cape Town,South Africa,Africa,nature,mild,130,6,9,-33.9249,18.4241
-Marrakech,Morocco,Africa,culture,warm,100,6,8,31.6295,-7.9811
-Rio de Janeiro,Brazil,South America,beach,warm,120,5,10,-22.9068,-43.1729
-Cartagena,Colombia,South America,beach,warm,100,6,8,10.391,-75.4794
-Providence,United States,,unknown,unknown,150,5,5,41.8239891,-71.4128343
+city,country,region,trip_type,climate_tag,estimated_nightly_cost,safety_score,attraction_score,latitude,longitude,airport_code
+Miami,USA,North America,beach,warm,200,6,9,25.7617,-80.1918,MIA
+San Juan,Puerto Rico,Caribbean,beach,warm,120,7,8,18.4655,-66.1057,SJU
+Cancun,Mexico,North America,beach,warm,150,5,9,21.1619,-86.8515,CUN
+Key West,USA,North America,beach,warm,230,8,8,24.5551,-81.78,EYW
+Barcelona,Spain,Europe,culture,warm,170,8,10,41.3874,2.1686,BCN
+Lisbon,Portugal,Europe,culture,warm,140,8,8,38.7223,-9.1393,LIS
+Athens,Greece,Europe,culture,warm,130,7,9,37.9838,23.7275,ATH
+Tokyo,Japan,Asia,city,mild,180,9,10,35.6762,139.6503,HND
+Kyoto,Japan,Asia,culture,mild,160,9,9,35.0116,135.7681,KIX
+Bangkok,Thailand,Asia,city,warm,90,6,9,13.7563,100.5018,BKK
+Phuket,Thailand,Asia,beach,warm,110,7,9,7.8804,98.3923,HKT
+Cape Town,South Africa,Africa,nature,mild,130,6,9,-33.9249,18.4241,CPT
+Marrakech,Morocco,Africa,culture,warm,100,6,8,31.6295,-7.9811,RAK
+Rio de Janeiro,Brazil,South America,beach,warm,120,5,10,-22.9068,-43.1729,GIG
+Cartagena,Colombia,South America,beach,warm,100,6,8,10.391,-75.4794,CTG
+Providence,United States,North America,unknown,unknown,150,5,5,41.8239891,-71.4128343,PVD
+San Antonio,United States,North America,unknown,unknown,150,5,5,29.4246002,-98.4951405,SAT
+Boston,United States,North America,city,mild,220,8,9,42.3601,-71.0589,BOS
+Portland,United States,North America,unknown,unknown,150,5,5,43.6573605,-70.2586618,PWM
+Nassau,Bahamas,Caribbean,beach,warm,150,5,5,25.0782266,-77.3383438,NAS
+Punta Cana,Dominican Republic,Caribbean,beach,warm,150,5,5,18.556551,-68.3691611,PUJ
+Montego Bay,Jamaica,Caribbean,beach,warm,150,5,5,18.4724603,-77.9217357,MBJ
+Aruba,Aruba,Caribbean,beach,warm,150,5,5,12.5013629,-69.9618475,AUA
+Tulum,Mexico,North America,beach,warm,150,5,5,20.429647,-87.6529306,TQO
+Cabo San Lucas,Mexico,North America,beach,warm,150,5,5,22.8938884,-109.92006,SJD
+Honolulu,United States,North America,beach,warm,150,5,5,21.304547,-157.855676,HNL
+Caramoran,Philippines,Asia,beach,warm,150,5,5,13.8956916,124.1466129,VRC
+Fort Lauderdale,United States,North America,beach,warm,150,5,5,26.1223084,-80.1433786,FLL
+Clearwater,United States,North America,beach,warm,150,5,5,27.9658533,-82.8001026,CLW
+Myrtle Beach,United States,North America,beach,warm,150,5,5,33.6956461,-78.8900409,MYR
+Salvador,Brazil,South America,beach,warm,150,5,5,-12.9822499,-38.4812772,SSA
+Lagos,Portugal,Europe,beach,warm,150,5,5,37.1027964,-8.6728689,PRM
+Nice,France,Europe,beach,warm,150,5,5,43.7009358,7.2683912,NCE
+New Orleans,United States,North America,culture,mild,150,5,5,29.9561422,-90.0733934,NEW
+Savannah,United States,North America,culture,mild,150,5,5,32.0790074,-81.0921335,SAV
+Charleston,United States,North America,culture,mild,150,5,5,32.7884363,-79.9399309,CHS
+Quebec,Canada,North America,culture,mild,150,5,5,46.8137431,-71.2084061,YQB
+Oaxaca City,Mexico,North America,culture,mild,150,5,5,17.0604663,-96.7253575,OAX
+Havana,Cuba,Caribbean,culture,mild,150,5,5,23.135305,-82.3589631,HAV
+Cuzco,Peru,North America,culture,mild,150,5,5,-13.5170887,-71.9785356,CUZ
+Seville,Spain,Europe,culture,mild,150,5,5,37.3886303,-5.9953403,SVQ
+Florence,Italy,Europe,culture,mild,150,5,5,43.7697955,11.2556404,FLR
+Marrakesh,Morocco,Africa,culture,mild,150,5,5,31.6258257,-7.9891608,RAK
+Cairo,Egypt,Africa,culture,warm,150,5,5,30.0443879,31.2357257,CAI
+Accra,Ghana,Africa,culture,warm,150,5,5,5.545935,-0.210089,ACC
+Dakar,Senegal,Africa,culture,warm,150,5,5,14.693425,-17.447938,DKR
+Jaipur,India,Asia,culture,warm,150,5,5,26.9154576,75.8189817,JAI
+Split,Croatia,Caribbean,beach,warm,150,5,5,43.5116383,16.4399659,SPU
+Thira Municipal Unit,Greece,Europe,beach,warm,150,5,5,36.4071112,25.4566637,JTR
+Zanzibar City,Tanzania,Africa,beach,warm,150,5,5,-6.1664908,39.2074312,ZNZ
+Bali,India,Caribbean,beach,warm,150,5,5,25.1895706,73.2905263,UDR
+Ko Samui,Thailand,Asia,beach,warm,150,5,5,9.553265,100.039266,USM
+Đà Nẵng,Vietnam,Asia,beach,warm,150,5,5,16.068,108.212,DAD
+Gold Coast,Australia,Oceania,beach,warm,150,5,5,-28.0023731,153.4145987,SHQ

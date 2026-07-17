@@ -1,71 +1,34 @@
-import os
-import requests
-from dotenv import load_dotenv
-
-load_dotenv()
-
-print("SERPAPI:", os.getenv("SERPAPI_API_KEY"))
-
-SERPAPI_API_KEY = os.getenv("SERPAPI_API_KEY")
+from app.services.flight_service import get_flight_pricing
+from app.services.lodging_service import get_lodging_pricing
 
 
-def test_serpapi_connection():
-    if not SERPAPI_API_KEY:
-        return {
-            "status": "failed",
-            "message": "SERPAPI_API_KEY not found in .env"
-        }
-
-    url = "https://serpapi.com/search.json"
-
-    params = {
-        "engine": "google_flights",
-        "departure_id": "BOS",
-        "arrival_id": "MIA",
-        "outbound_date": "2026-09-15",
-        "return_date": "2026-09-20",
-        "currency": "USD",
-        "hl": "en",
-        "api_key": SERPAPI_API_KEY
-    }
-
-    response = requests.get(url, params=params, timeout=15)
-
-    return response.json().get("best_flights", [])
-
-def get_flight_pricing(origin, destination):
+def get_trip_pricing(
+    origin,
+    destination,
+    nights,
+    fallback_flight_cost,
+    outbound_date,
+    return_date,
+):
     """
-    Future: Replace with live flight API.
-    Current: fallback estimate.
+    Combines live flight and lodging pricing.
+
+    Regional flight and CSV lodging estimates remain available as fallbacks.
     """
+    flight = get_flight_pricing(
+        origin=origin,
+        destination=destination,
+        outbound_date=outbound_date,
+        return_date=return_date,
+    )
 
-    return {
-        "total_price": None,
-        "outbound_duration": None,
-        "return_duration": None,
-        "connection_count": None,
-        "flight_practicality": "fallback",
-        "source": "fallback"
-    }
-
-
-def get_lodging_pricing(destination, nights):
-    nightly_cost = destination["estimated_nightly_cost"]
-    lodging_total = nightly_cost * nights
-
-    return {
-        "properties_checked": 0,
-        "min_nightly": nightly_cost,
-        "max_nightly": nightly_cost,
-        "average_nightly": nightly_cost,
-        "lodging_total": lodging_total,
-        "source": "csv_fallback"
-    }
-
-
-def get_trip_pricing(origin, destination, nights, fallback_flight_cost):
-    flight = get_flight_pricing(origin, destination)
-    lodging = get_lodging_pricing(destination, nights)
+    lodging = get_lodging_pricing(
+        destination=destination,
+        nights=nights,
+        check_in_date=outbound_date,
+        check_out_date=return_date,
+        adults=2,
+    )
 
     flight_total = (
         flight["total_price"]
@@ -79,6 +42,13 @@ def get_trip_pricing(origin, destination, nights, fallback_flight_cost):
         "flight": flight,
         "lodging": lodging,
         "flight_total": flight_total,
-        "estimated_total_cost": estimated_total_cost,
-        "fallback_used": flight["source"] == "fallback"
+        "estimated_total_cost": round(estimated_total_cost, 2),
+        "flight_fallback_used": flight["source"] == "fallback",
+        "lodging_fallback_used": lodging["source"] == "csv_fallback",
+        "fallback_used": (
+            flight["source"] == "fallback"
+            or lodging["source"] == "csv_fallback"
+        ),
+        "outbound_date": outbound_date,
+        "return_date": return_date,
     }

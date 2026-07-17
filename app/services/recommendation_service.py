@@ -1,10 +1,17 @@
 import re
 import os
 import requests
+from datetime import date, timedelta
 from dotenv import load_dotenv
-from app.services.location_service import get_candidate_locations, get_or_discover_location
+from app.services.location_service import (
+    discover_destination_candidates,
+    get_candidate_locations,
+    get_or_discover_location,
+)
 from app.services.advisory_service import find_advisory_by_country, calculate_advisory_penalty
 from app.services.travel_logistics_service import get_trip_pricing
+from app.services.region_service import backfill_missing_regions
+from app.services.embedding_service import rank_destinations_by_embedding
 
 load_dotenv()
 
@@ -105,7 +112,7 @@ def calculate_weather_score(prompt, temperature, condition):
             score = 10
             reason = f"Current temperature {temperature}°F partially matches mild preference"
 
-    elif "cold" in prompt or "snow" in prompt or "winter" in prompt:
+    elif "cold" in prompt or "snow" in prompt or "ski" in prompt:
         if temperature <= 45:
             score = 25
             reason = f"Current temperature {temperature}°F matches cold preference"
@@ -154,7 +161,7 @@ def calculate_seasonal_weather_score(prompt, seasonal_weather, month_name):
             score += 5
             reason = f"Historical {month_name} average temperature is {avg_temp}°F, which partially matches a mild-weather preference"
 
-    elif "cold" in prompt or "snow" in prompt or "winter" in prompt:
+    elif "cold" in prompt or "snow" in prompt or "ski" in prompt:
         if avg_temp <= 45:
             score += 20
             reason = f"Historical {month_name} average temperature is {avg_temp}°F, which supports cold-weather travel"
@@ -173,6 +180,48 @@ def calculate_seasonal_weather_score(prompt, seasonal_weather, month_name):
     return score, reason
 
 
+
+def extract_budget_from_prompt(prompt):
+    """
+    Extracts a budget from natural language.
+
+    Supported examples:
+    - "$1500"
+    - "$1,500"
+    - "1500 dollars"
+    - "budget of 3000"
+    """
+    prompt_lower = prompt.lower()
+
+    patterns = [
+        r"\$\s*([\d,]+(?:\.\d{1,2})?)",
+        r"(?:budget(?:\s+of)?|within|under|up to|max(?:imum)?)\s*\$?\s*([\d,]+(?:\.\d{1,2})?)",
+        r"([\d,]+(?:\.\d{1,2})?)\s*(?:dollars|usd)",
+    ]
+
+    for pattern in patterns:
+        match = re.search(pattern, prompt_lower)
+
+        if match:
+            return float(match.group(1).replace(",", ""))
+
+    return None
+
+
+def resolve_budget(prompt, budget=None, default_budget=2500):
+    """
+    Uses the explicit API budget first, then the prompt, then a safe default.
+    """
+    if budget is not None and budget > 0:
+        return float(budget)
+
+    prompt_budget = extract_budget_from_prompt(prompt)
+
+    if prompt_budget is not None:
+        return prompt_budget
+
+    return float(default_budget)
+
 def extract_trip_length(prompt):
     prompt = prompt.lower()
 
@@ -185,7 +234,13 @@ def extract_trip_length(prompt):
 
 
 def extract_trip_month(prompt):
-    prompt = prompt.lower()
+    """
+    Extracts an explicit month or maps a season to a representative month.
+
+    Season mapping uses Northern Hemisphere travel conventions:
+    winter -> January, spring -> April, summer -> July, fall/autumn -> October.
+    """
+    prompt_lower = prompt.lower()
 
     months = {
         "january": 1,
@@ -199,14 +254,49 @@ def extract_trip_month(prompt):
         "september": 9,
         "october": 10,
         "november": 11,
-        "december": 12
+        "december": 12,
     }
 
     for month_name, month_number in months.items():
-        if month_name in prompt:
+        if month_name in prompt_lower:
             return month_number, month_name
 
+    seasons = {
+        "winter": (1, "january"),
+        "spring": (4, "april"),
+        "summer": (7, "july"),
+        "fall": (10, "october"),
+        "autumn": (10, "october"),
+    }
+
+    for season_name, season_month in seasons.items():
+        if season_name in prompt_lower:
+            return season_month
+
     return None, None
+
+
+def generate_trip_dates(trip_month, nights):
+    """
+    Generates concrete outbound and return dates for live flight searches.
+
+    - Uses the 15th of the requested month.
+    - Uses next year when that date has already passed.
+    - Defaults to 30 days from today when no month is requested.
+    """
+    today = date.today()
+
+    if trip_month is None:
+        outbound = today + timedelta(days=30)
+    else:
+        outbound = date(today.year, trip_month, 15)
+
+        if outbound <= today:
+            outbound = date(today.year + 1, trip_month, 15)
+
+    return_date = outbound + timedelta(days=nights)
+
+    return outbound.isoformat(), return_date.isoformat()
 
 
 def estimate_flight_cost(start_destination, destination):
@@ -255,7 +345,18 @@ def calculate_total_cost(start_destination, destination, nights):
     )
 
 
-def calculate_score(start_destination, destination, prompt, budget, nights, trip_month, month_name):
+def calculate_score(
+    origin,
+    start_destination,
+    destination,
+    prompt,
+    budget,
+    nights,
+    trip_month,
+    month_name,
+    outbound_date,
+    return_date,
+):
     prompt = prompt.lower()
     score = 0
     reasons = []
@@ -263,10 +364,12 @@ def calculate_score(start_destination, destination, prompt, budget, nights, trip
     estimated_flight_cost = estimate_flight_cost(start_destination, destination)
 
     pricing = get_trip_pricing(
-        origin=start_destination,
+        origin=origin,
         destination=destination,
         nights=nights,
-        fallback_flight_cost=estimated_flight_cost
+        fallback_flight_cost=estimated_flight_cost,
+        outbound_date=outbound_date,
+        return_date=return_date,
     )
 
     total_cost = pricing["estimated_total_cost"]
@@ -331,41 +434,225 @@ def calculate_score(start_destination, destination, prompt, budget, nights, trip
 
     return score, reasons, total_cost, estimated_flight_cost, weather, seasonal_weather, advisory, pricing
 
-def get_recommendations(start_destination, prompt, budget):
+
+def detect_requested_trip_types(prompt):
+    """
+    Maps prompt wording and common variants to supported trip types.
+    """
+    prompt_lower = prompt.lower()
+
+    keyword_groups = {
+        "beach": [
+            "beach", "beaches", "coast", "coastal", "ocean",
+            "island", "tropical", "seaside",
+        ],
+        "culture": [
+            "culture", "cultural", "history", "historic", "historical",
+            "museum", "museums", "architecture", "art", "heritage",
+        ],
+        "city": [
+            "city", "cities", "urban", "nightlife", "shopping",
+            "walkable", "restaurants",
+        ],
+        "nature": [
+            "nature", "mountain", "mountains", "hiking", "outdoors",
+            "forest", "wildlife", "national park", "scenery",
+        ],
+    }
+
+    return {
+        trip_type
+        for trip_type, keywords in keyword_groups.items()
+        if any(keyword in prompt_lower for keyword in keywords)
+    }
+
+
+
+def detect_requested_regions(prompt):
+    """
+    Maps common region wording and adjective forms to CSV region values.
+    """
+    prompt_lower = prompt.lower()
+
+    region_keywords = {
+        "Asia": ["asia", "asian"],
+        "Europe": ["europe", "european"],
+        "Africa": ["africa", "african"],
+        "North America": ["north america", "north american"],
+        "South America": ["south america", "south american", "latin america"],
+        "Caribbean": ["caribbean"],
+        "Oceania": ["oceania", "australia", "new zealand", "pacific"],
+    }
+
+    return {
+        region
+        for region, keywords in region_keywords.items()
+        if any(keyword in prompt_lower for keyword in keywords)
+    }
+
+def calculate_preliminary_score(
+    start_destination,
+    destination,
+    prompt,
+    budget,
+    nights,
+    requested_trip_types,
+    requested_regions,
+):
+    """
+    Fast local score used only to choose which destinations receive live API calls.
+
+    No weather, advisory, flight, or hotel API is called here.
+    """
+    score = 0.0
+    prompt_lower = prompt.lower()
+    destination_trip_type = str(destination.get("trip_type", "unknown")).lower()
+    climate_tag = str(destination.get("climate_tag", "unknown")).lower()
+
+    if requested_trip_types:
+        if destination_trip_type in requested_trip_types:
+            score += 40
+        else:
+            score -= 40
+
+    destination_region = str(destination.get("region", "")).strip()
+
+    if requested_regions:
+        if destination_region in requested_regions:
+            score += 35
+        else:
+            score -= 35
+
+    if any(word in prompt_lower for word in ["warm", "hot", "tropical"]):
+        score += 20 if climate_tag == "warm" else -5
+    elif any(word in prompt_lower for word in ["mild", "comfortable", "cool"]):
+        score += 20 if climate_tag == "mild" else 0
+    elif any(word in prompt_lower for word in ["cold", "snow", "ski"]):
+        score += 20 if climate_tag == "cold" else -5
+
+    estimated_total = calculate_total_cost(
+        start_destination=start_destination,
+        destination=destination,
+        nights=nights,
+    )
+
+    if estimated_total <= budget:
+        score += 25
+    elif estimated_total <= budget * 1.3:
+        score += 5
+    else:
+        score -= 30
+
+    score += float(destination.get("safety_score", 5))
+    score += float(destination.get("attraction_score", 5))
+
+    if "safety" in prompt_lower or "safe" in prompt_lower or "low crime" in prompt_lower:
+        score += float(destination.get("safety_score", 5)) * 2
+
+    return score
+
+def get_recommendations(start_destination, prompt, budget=None):
+    budget = resolve_budget(prompt, budget)
     nights = extract_trip_length(prompt)
     trip_month, month_name = extract_trip_month(prompt)
-    prompt_lower = prompt.lower()
+    outbound_date, return_date = generate_trip_dates(trip_month, nights)
     results = []
 
     origin = get_or_discover_location(start_destination)
 
+    # Keep the persistent inventory complete before filtering by region.
+    backfill_missing_regions()
+
+    # Grow the inventory before shortlisting, but do not call expensive pricing
+    # APIs for every saved destination.
+    discover_destination_candidates(prompt, limit=5)
+
+    requested_trip_types = detect_requested_trip_types(prompt)
+    requested_regions = detect_requested_regions(prompt)
+
+    eligible_destinations = []
+
     for destination in get_candidate_locations():
-        estimated_total_cost = calculate_total_cost(
+        city = str(destination.get("city", "")).strip()
+
+        if not city:
+            continue
+
+        if origin and city.lower() == str(origin.get("city", "")).strip().lower():
+            continue
+
+        # Explicit wording such as "in Asia" is a hard constraint.
+        if requested_regions:
+            destination_region = str(
+                destination.get("region", "")
+            ).strip()
+
+            if destination_region not in requested_regions:
+                continue
+
+        eligible_destinations.append(destination)
+
+    embedding_ranked = rank_destinations_by_embedding(
+        prompt=prompt,
+        destinations=eligible_destinations,
+    )
+
+    preliminary_candidates = []
+
+    for embedding_result in embedding_ranked:
+        destination = embedding_result["destination"]
+        embedding_similarity = embedding_result["embedding_similarity"]
+
+        local_score = calculate_preliminary_score(
             start_destination=start_destination,
             destination=destination,
-            nights=nights
+            prompt=prompt,
+            budget=budget,
+            nights=nights,
+            requested_trip_types=requested_trip_types,
+            requested_regions=requested_regions,
         )
 
-        if estimated_total_cost > budget * 1.3:
-            continue
+        # Convert the typical cosine-similarity range into a useful ranking signal.
+        embedding_points = max(embedding_similarity, 0.0) * 60
+        combined_preliminary_score = local_score + embedding_points
 
-        known_trip_types = ["beach", "culture", "city", "nature"]
-        requested_trip_types = [
-            trip_type for trip_type in known_trip_types
-            if trip_type in prompt_lower
-        ]
+        preliminary_candidates.append({
+            "destination": destination,
+            "local_score": local_score,
+            "embedding_similarity": embedding_similarity,
+            "embedding_available": embedding_result["embedding_available"],
+            "combined_score": combined_preliminary_score,
+        })
 
-        if requested_trip_types and destination["trip_type"] not in requested_trip_types:
-            continue
+    # Only these candidates receive weather, advisory, flight, and hotel calls.
+    shortlisted_candidates = sorted(
+        preliminary_candidates,
+        key=lambda item: item["combined_score"],
+        reverse=True,
+    )[:8]
 
+    shortlisted_destinations = [
+        item["destination"] for item in shortlisted_candidates
+    ]
+
+    shortlist_metadata = {
+        str(item["destination"].get("city", "")).strip().lower(): item
+        for item in shortlisted_candidates
+    }
+
+    for destination in shortlisted_destinations:
         score, reasons, total_cost, estimated_flight_cost, weather, seasonal_weather, advisory, pricing = calculate_score(
+            origin=origin,
             start_destination=start_destination,
             destination=destination,
             prompt=prompt,
             budget=budget,
             nights=nights,
             trip_month=trip_month,
-            month_name=month_name
+            month_name=month_name,
+            outbound_date=outbound_date,
+            return_date=return_date,
         )
 
         results.append({
@@ -377,7 +664,24 @@ def get_recommendations(start_destination, prompt, budget):
             "trip_type": destination["trip_type"],
             "climate_tag": destination["climate_tag"],
             "score": score,
+            "preliminary_score": round(
+                shortlist_metadata[
+                    str(destination.get("city", "")).strip().lower()
+                ]["combined_score"],
+                2,
+            ),
+            "embedding_similarity": round(
+                shortlist_metadata[
+                    str(destination.get("city", "")).strip().lower()
+                ]["embedding_similarity"],
+                4,
+            ),
+            "embedding_available": shortlist_metadata[
+                str(destination.get("city", "")).strip().lower()
+            ]["embedding_available"],
             "trip_length_nights": nights,
+            "outbound_date": outbound_date,
+            "return_date": return_date,
             "estimated_total_cost": total_cost,
             "estimated_flight_cost": estimated_flight_cost,
             "pricing": pricing,
