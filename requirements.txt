@@ -24,3 +24,5 @@ typing_extensions==4.15.0
 tzdata==2026.2
 urllib3==2.7.0
 uvicorn==0.48.0
+cachetools==6.2.3
+google-genai==2.11.0

@@ -196,14 +196,14 @@ with right_column:
             height=130,
         )
 
-        avoid_prompt = st.text_area(
-            "Preferences to avoid",
-            placeholder=(
-                "Example: Cold weather, hostels, long layovers, "
-                "or overly crowded destinations."
-            ),
-            height=100,
-        )
+      #  avoid_prompt = st.text_area(
+      #      "Preferences to avoid",
+      #      placeholder=(
+      #          "Example: Cold weather, hostels, long layovers, "
+      #          "or overly crowded destinations."
+      #      ),
+      #      height=100,
+      #  )
 
         budget_input = st.number_input(
             "Maximum budget in USD",
@@ -229,13 +229,13 @@ if submitted:
     else:
         combined_prompt = trip_prompt.strip()
 
-        if avoid_prompt.strip():
-            combined_prompt += (
-                "\n\nThe traveler would prefer to avoid: "
-                + avoid_prompt.strip()
-                + ". Treat these as preferences rather than "
-                "guaranteed exclusions."
-            )
+       # if avoid_prompt.strip():
+       #     combined_prompt += (
+       #         "\n\nThe traveler would prefer to avoid: "
+       #         + avoid_prompt.strip()
+       #         + ". Treat these as preferences rather than "
+       #         "guaranteed exclusions."
+       #     )
 
         progress = st.progress(
             0,

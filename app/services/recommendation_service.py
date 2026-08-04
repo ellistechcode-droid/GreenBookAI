@@ -345,6 +345,22 @@ def calculate_total_cost(start_destination, destination, nights):
     )
 
 
+def get_destination_trip_types(destination):
+    """
+    Returns normalized trip types for both the new three-column CSV schema
+    and older dynamically discovered records that may still use trip_type.
+    """
+    trip_types = []
+
+    for field in ("trip_type_1", "trip_type_2", "trip_type_3", "trip_type"):
+        value = str(destination.get(field, "")).strip().lower()
+
+        if value and value not in {"unknown", "none", "nan"} and value not in trip_types:
+            trip_types.append(value)
+
+    return trip_types
+
+
 def calculate_score(
     origin,
     start_destination,
@@ -374,9 +390,17 @@ def calculate_score(
 
     total_cost = pricing["estimated_total_cost"]
 
-    if destination["trip_type"] in prompt:
+    destination_trip_types = get_destination_trip_types(destination)
+    matched_trip_types = [
+        trip_type for trip_type in destination_trip_types
+        if trip_type in prompt
+    ]
+
+    if matched_trip_types:
         score += 30
-        reasons.append(f"Matches trip type: {destination['trip_type']}")
+        reasons.append(
+            f"Matches trip type: {', '.join(matched_trip_types)}"
+        )
 
     weather = get_live_weather(destination["city"])
     weather_score, weather_reason = calculate_weather_score(
@@ -490,6 +514,299 @@ def detect_requested_regions(prompt):
         if any(keyword in prompt_lower for keyword in keywords)
     }
 
+
+def detect_requested_subregions(prompt):
+    """
+    Detects smaller geographic areas such as East Africa or Southeast Asia.
+
+    A subregion is more specific than a broad region. For example, a request
+    for "East Africa" should not search every destination in Africa.
+    """
+    prompt_lower = prompt.lower()
+
+    subregion_keywords = {
+        "North Africa": ["north africa", "northern africa"],
+        "West Africa": ["west africa", "western africa"],
+        "Central Africa": ["central africa", "middle africa"],
+        "East Africa": ["east africa", "eastern africa"],
+        "Southern Africa": ["southern africa"],
+        "East Asia": ["east asia", "eastern asia"],
+        "Southeast Asia": [
+            "southeast asia",
+            "south east asia",
+            "southeastern asia",
+            "south-eastern asia",
+        ],
+        "South Asia": ["south asia", "southern asia"],
+        "Central Asia": ["central asia"],
+        "West Asia": ["west asia", "western asia", "middle east"],
+        "Northern Europe": ["northern europe", "north europe"],
+        "Western Europe": ["western europe", "west europe"],
+        "Southern Europe": ["southern europe", "south europe"],
+        "Eastern Europe": ["eastern europe", "east europe"],
+        "Central America": ["central america"],
+        "Northern America": ["northern america"],
+        "Andean Region": ["andean region", "andes", "andean"],
+        "Southern Cone": ["southern cone"],
+        "Northern South America": ["northern south america"],
+        "Australia and New Zealand": [
+            "australia and new zealand",
+            "australasia",
+        ],
+        "Melanesia": ["melanesia"],
+        "Micronesia": ["micronesia"],
+        "Polynesia": ["polynesia"],
+    }
+
+    return {
+        subregion
+        for subregion, keywords in subregion_keywords.items()
+        if any(keyword in prompt_lower for keyword in keywords)
+    }
+
+
+COUNTRY_SUBREGION_MAP = {
+    # Africa
+    "Algeria": "North Africa",
+    "Egypt": "North Africa",
+    "Libya": "North Africa",
+    "Morocco": "North Africa",
+    "Sudan": "North Africa",
+    "Tunisia": "North Africa",
+    "Benin": "West Africa",
+    "Burkina Faso": "West Africa",
+    "Cape Verde": "West Africa",
+    "Côte d'Ivoire": "West Africa",
+    "Ivory Coast": "West Africa",
+    "Gambia": "West Africa",
+    "Ghana": "West Africa",
+    "Guinea": "West Africa",
+    "Guinea-Bissau": "West Africa",
+    "Liberia": "West Africa",
+    "Mali": "West Africa",
+    "Mauritania": "West Africa",
+    "Niger": "West Africa",
+    "Nigeria": "West Africa",
+    "Senegal": "West Africa",
+    "Sierra Leone": "West Africa",
+    "Togo": "West Africa",
+    "Burundi": "East Africa",
+    "Comoros": "East Africa",
+    "Djibouti": "East Africa",
+    "Eritrea": "East Africa",
+    "Ethiopia": "East Africa",
+    "Kenya": "East Africa",
+    "Madagascar": "East Africa",
+    "Malawi": "East Africa",
+    "Mauritius": "East Africa",
+    "Mozambique": "East Africa",
+    "Rwanda": "East Africa",
+    "Seychelles": "East Africa",
+    "Somalia": "East Africa",
+    "South Sudan": "East Africa",
+    "Tanzania": "East Africa",
+    "Uganda": "East Africa",
+    "Zambia": "East Africa",
+    "Zimbabwe": "East Africa",
+    "Angola": "Central Africa",
+    "Cameroon": "Central Africa",
+    "Central African Republic": "Central Africa",
+    "Chad": "Central Africa",
+    "Democratic Republic of the Congo": "Central Africa",
+    "DR Congo": "Central Africa",
+    "Republic of the Congo": "Central Africa",
+    "Congo": "Central Africa",
+    "Equatorial Guinea": "Central Africa",
+    "Gabon": "Central Africa",
+    "São Tomé and Príncipe": "Central Africa",
+    "Botswana": "Southern Africa",
+    "Eswatini": "Southern Africa",
+    "Lesotho": "Southern Africa",
+    "Namibia": "Southern Africa",
+    "South Africa": "Southern Africa",
+
+    # Asia
+    "China": "East Asia",
+    "Hong Kong": "East Asia",
+    "Japan": "East Asia",
+    "Macao": "East Asia",
+    "Macau": "East Asia",
+    "Mongolia": "East Asia",
+    "North Korea": "East Asia",
+    "South Korea": "East Asia",
+    "Taiwan": "East Asia",
+    "Brunei": "Southeast Asia",
+    "Cambodia": "Southeast Asia",
+    "Indonesia": "Southeast Asia",
+    "Laos": "Southeast Asia",
+    "Malaysia": "Southeast Asia",
+    "Myanmar": "Southeast Asia",
+    "Philippines": "Southeast Asia",
+    "Singapore": "Southeast Asia",
+    "Thailand": "Southeast Asia",
+    "Timor-Leste": "Southeast Asia",
+    "Vietnam": "Southeast Asia",
+    "Afghanistan": "South Asia",
+    "Bangladesh": "South Asia",
+    "Bhutan": "South Asia",
+    "India": "South Asia",
+    "Maldives": "South Asia",
+    "Nepal": "South Asia",
+    "Pakistan": "South Asia",
+    "Sri Lanka": "South Asia",
+    "Kazakhstan": "Central Asia",
+    "Kyrgyzstan": "Central Asia",
+    "Tajikistan": "Central Asia",
+    "Turkmenistan": "Central Asia",
+    "Uzbekistan": "Central Asia",
+    "Armenia": "West Asia",
+    "Azerbaijan": "West Asia",
+    "Bahrain": "West Asia",
+    "Cyprus": "West Asia",
+    "Georgia": "West Asia",
+    "Iraq": "West Asia",
+    "Israel": "West Asia",
+    "Jordan": "West Asia",
+    "Kuwait": "West Asia",
+    "Lebanon": "West Asia",
+    "Oman": "West Asia",
+    "Palestine": "West Asia",
+    "Qatar": "West Asia",
+    "Saudi Arabia": "West Asia",
+    "Turkey": "West Asia",
+    "Türkiye": "West Asia",
+    "United Arab Emirates": "West Asia",
+    "Yemen": "West Asia",
+
+    # Europe
+    "Denmark": "Northern Europe",
+    "Estonia": "Northern Europe",
+    "Finland": "Northern Europe",
+    "Iceland": "Northern Europe",
+    "Ireland": "Northern Europe",
+    "Latvia": "Northern Europe",
+    "Lithuania": "Northern Europe",
+    "Norway": "Northern Europe",
+    "Sweden": "Northern Europe",
+    "United Kingdom": "Northern Europe",
+    "Austria": "Western Europe",
+    "Belgium": "Western Europe",
+    "France": "Western Europe",
+    "Germany": "Western Europe",
+    "Liechtenstein": "Western Europe",
+    "Luxembourg": "Western Europe",
+    "Monaco": "Western Europe",
+    "Netherlands": "Western Europe",
+    "Switzerland": "Western Europe",
+    "Albania": "Southern Europe",
+    "Andorra": "Southern Europe",
+    "Bosnia and Herzegovina": "Southern Europe",
+    "Croatia": "Southern Europe",
+    "Greece": "Southern Europe",
+    "Italy": "Southern Europe",
+    "Malta": "Southern Europe",
+    "Montenegro": "Southern Europe",
+    "North Macedonia": "Southern Europe",
+    "Portugal": "Southern Europe",
+    "San Marino": "Southern Europe",
+    "Serbia": "Southern Europe",
+    "Slovenia": "Southern Europe",
+    "Spain": "Southern Europe",
+    "Vatican City": "Southern Europe",
+    "Belarus": "Eastern Europe",
+    "Bulgaria": "Eastern Europe",
+    "Czechia": "Eastern Europe",
+    "Czech Republic": "Eastern Europe",
+    "Hungary": "Eastern Europe",
+    "Moldova": "Eastern Europe",
+    "Poland": "Eastern Europe",
+    "Romania": "Eastern Europe",
+    "Russia": "Eastern Europe",
+    "Slovakia": "Eastern Europe",
+    "Ukraine": "Eastern Europe",
+
+    # Americas
+    "Belize": "Central America",
+    "Costa Rica": "Central America",
+    "El Salvador": "Central America",
+    "Guatemala": "Central America",
+    "Honduras": "Central America",
+    "Nicaragua": "Central America",
+    "Panama": "Central America",
+    "Canada": "Northern America",
+    "United States": "Northern America",
+    "USA": "Northern America",
+    "Mexico": "Northern America",
+    "Bolivia": "Andean Region",
+    "Colombia": "Andean Region",
+    "Ecuador": "Andean Region",
+    "Peru": "Andean Region",
+    "Argentina": "Southern Cone",
+    "Chile": "Southern Cone",
+    "Paraguay": "Southern Cone",
+    "Uruguay": "Southern Cone",
+    "Guyana": "Northern South America",
+    "Suriname": "Northern South America",
+    "Venezuela": "Northern South America",
+
+    # Oceania
+    "Australia": "Australia and New Zealand",
+    "New Zealand": "Australia and New Zealand",
+    "Fiji": "Melanesia",
+    "Papua New Guinea": "Melanesia",
+    "Solomon Islands": "Melanesia",
+    "Vanuatu": "Melanesia",
+    "Kiribati": "Micronesia",
+    "Marshall Islands": "Micronesia",
+    "Micronesia": "Micronesia",
+    "Nauru": "Micronesia",
+    "Palau": "Micronesia",
+    "Samoa": "Polynesia",
+    "Tonga": "Polynesia",
+    "Tuvalu": "Polynesia",
+}
+
+
+def get_destination_subregion(destination):
+    """
+    Returns a saved subregion when present, otherwise infers one from country.
+
+    This lets GreenBookAI support subregion filtering immediately, even before
+    every row in travel_locations.csv has a subregion value.
+    """
+    saved_subregion = str(destination.get("subregion", "")).strip()
+
+    if saved_subregion and saved_subregion.lower() not in {"unknown", "none", "nan"}:
+        return saved_subregion
+
+    country = str(destination.get("country", "")).strip()
+    return COUNTRY_SUBREGION_MAP.get(country, "")
+
+
+def detect_requested_countries(prompt, destinations):
+    """
+    Detects exact country names already represented in the candidate inventory.
+
+    Country matching has priority over broad-region matching, so "South Africa"
+    is treated as a country instead of merely as a request for Africa.
+    """
+    prompt_lower = prompt.lower()
+    countries = {
+        str(destination.get("country", "")).strip()
+        for destination in destinations
+        if str(destination.get("country", "")).strip()
+    }
+
+    requested = set()
+
+    for country in sorted(countries, key=len, reverse=True):
+        pattern = rf"(?<!\w){re.escape(country.lower())}(?!\w)"
+
+        if re.search(pattern, prompt_lower):
+            requested.add(country)
+
+    return requested
+
 def calculate_preliminary_score(
     start_destination,
     destination,
@@ -498,6 +815,7 @@ def calculate_preliminary_score(
     nights,
     requested_trip_types,
     requested_regions,
+    requested_subregions,
 ):
     """
     Fast local score used only to choose which destinations receive live API calls.
@@ -506,18 +824,24 @@ def calculate_preliminary_score(
     """
     score = 0.0
     prompt_lower = prompt.lower()
-    destination_trip_type = str(destination.get("trip_type", "unknown")).lower()
+    destination_trip_types = set(get_destination_trip_types(destination))
     climate_tag = str(destination.get("climate_tag", "unknown")).lower()
 
     if requested_trip_types:
-        if destination_trip_type in requested_trip_types:
+        if destination_trip_types.intersection(requested_trip_types):
             score += 40
         else:
             score -= 40
 
     destination_region = str(destination.get("region", "")).strip()
+    destination_subregion = get_destination_subregion(destination)
 
-    if requested_regions:
+    if requested_subregions:
+        if destination_subregion in requested_subregions:
+            score += 45
+        else:
+            score -= 45
+    elif requested_regions:
         if destination_region in requested_regions:
             score += 35
         else:
@@ -569,10 +893,17 @@ def get_recommendations(start_destination, prompt, budget=None):
 
     requested_trip_types = detect_requested_trip_types(prompt)
     requested_regions = detect_requested_regions(prompt)
+    requested_subregions = detect_requested_subregions(prompt)
+
+    all_destinations = get_candidate_locations()
+    requested_countries = detect_requested_countries(
+        prompt=prompt,
+        destinations=all_destinations,
+    )
 
     eligible_destinations = []
 
-    for destination in get_candidate_locations():
+    for destination in all_destinations:
         city = str(destination.get("city", "")).strip()
 
         if not city:
@@ -581,13 +912,26 @@ def get_recommendations(start_destination, prompt, budget=None):
         if origin and city.lower() == str(origin.get("city", "")).strip().lower():
             continue
 
-        # Explicit wording such as "in Asia" is a hard constraint.
-        if requested_regions:
-            destination_region = str(
-                destination.get("region", "")
-            ).strip()
+        destination_country = str(destination.get("country", "")).strip()
+        destination_region = str(destination.get("region", "")).strip()
+        destination_subregion = get_destination_subregion(destination)
+        destination_trip_types = set(get_destination_trip_types(destination))
 
+        # Geographic constraints use the most specific wording available.
+        # Country > subregion > broad region > no geographic filter.
+        if requested_countries:
+            if destination_country not in requested_countries:
+                continue
+        elif requested_subregions:
+            if destination_subregion not in requested_subregions:
+                continue
+        elif requested_regions:
             if destination_region not in requested_regions:
+                continue
+
+        # An explicitly requested trip type is a hard requirement.
+        if requested_trip_types:
+            if not destination_trip_types.intersection(requested_trip_types):
                 continue
 
         eligible_destinations.append(destination)
@@ -611,6 +955,7 @@ def get_recommendations(start_destination, prompt, budget=None):
             nights=nights,
             requested_trip_types=requested_trip_types,
             requested_regions=requested_regions,
+            requested_subregions=requested_subregions,
         )
 
         # Convert the typical cosine-similarity range into a useful ranking signal.
@@ -661,7 +1006,13 @@ def get_recommendations(start_destination, prompt, budget=None):
             "destination": destination["city"],
             "country": destination["country"],
             "region": destination["region"],
-            "trip_type": destination["trip_type"],
+            "subregion": get_destination_subregion(destination),
+            "trip_type": (
+                get_destination_trip_types(destination)[0]
+                if get_destination_trip_types(destination)
+                else "unknown"
+            ),
+            "trip_types": get_destination_trip_types(destination),
             "climate_tag": destination["climate_tag"],
             "score": score,
             "preliminary_score": round(

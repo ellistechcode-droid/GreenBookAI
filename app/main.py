@@ -1,12 +1,14 @@
 import os
+from contextlib import asynccontextmanager
 from typing import Optional
 
 import requests
 from dotenv import load_dotenv
-from fastapi import FastAPI
+from fastapi import BackgroundTasks, FastAPI, Query
 from pydantic import BaseModel, Field
 
 from app.services.llm_service import generate_ai_recommendation
+from app.services.location_service import enrich_incomplete_locations
 from app.services.recommendation_service import (
     get_recommendations,
     resolve_budget,
@@ -14,10 +16,27 @@ from app.services.recommendation_service import (
 
 load_dotenv()
 
-app = FastAPI(title="GreenBookAI")
-
 GEOAPIFY_API_KEY = os.getenv("GEOAPIFY_API_KEY")
 OPENWEATHER_API_KEY = os.getenv("OPENWEATHER_API_KEY")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    Keeps API startup fast.
+
+    Slow destination enrichment is intentionally not run here. Use the
+    maintenance endpoint to process a small batch in the background.
+    """
+    print("GreenBookAI backend starting.")
+    yield
+    print("GreenBookAI backend shutting down.")
+
+
+app = FastAPI(
+    title="GreenBookAI",
+    lifespan=lifespan,
+)
 
 
 @app.get("/")
@@ -25,6 +44,27 @@ def root():
     return {
         "project": "GreenBookAI",
         "status": "Running",
+    }
+
+
+@app.post("/maintenance/enrich")
+def start_destination_enrichment(
+    background_tasks: BackgroundTasks,
+    limit: int = Query(default=3, ge=1, le=10),
+):
+    """
+    Enriches a controlled number of incomplete CSV rows without blocking
+    the HTTP response or FastAPI startup.
+    """
+    background_tasks.add_task(enrich_incomplete_locations, limit)
+
+    return {
+        "status": "started",
+        "message": (
+            "Destination enrichment started in the background for "
+            f"up to {limit} locations."
+        ),
+        "limit": limit,
     }
 
 
@@ -38,7 +78,12 @@ def get_places(city: str):
         "apiKey": GEOAPIFY_API_KEY,
     }
 
-    response = requests.get(url, params=params, timeout=20)
+    response = requests.get(
+        url,
+        params=params,
+        timeout=(3, 8),
+    )
+    response.raise_for_status()
     return response.json()
 
 
@@ -52,7 +97,13 @@ def get_weather(city: str):
         "units": "imperial",
     }
 
-    response = requests.get(url, params=params, timeout=20)
+    response = requests.get(
+        url,
+        params=params,
+        timeout=(3, 8),
+    )
+    response.raise_for_status()
+
     data = response.json()
 
     return {
@@ -69,7 +120,9 @@ class TripRequest(BaseModel):
         default="Boston",
         description="Starting city. Defaults to Boston when omitted.",
     )
+
     prompt: str
+
     budget: Optional[float] = Field(
         default=None,
         description=(
