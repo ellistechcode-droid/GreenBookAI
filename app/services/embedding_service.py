@@ -19,23 +19,39 @@ CACHE_FILE = Path("data/destination_embeddings.json")
 def build_destination_text(destination):
     """
     Converts one destination record into richer text for semantic retrieval.
+
+    Supports both the current three-column trip-type schema and older
+    dynamically discovered records that may still use a legacy trip_type field.
     """
     city = destination.get("city", "")
     country = destination.get("country", "")
     region = destination.get("region", "")
-    trip_type = destination.get("trip_type", "unknown")
     climate_tag = destination.get("climate_tag", "unknown")
     safety_score = destination.get("safety_score", 5)
     attraction_score = destination.get("attraction_score", 5)
 
+    trip_types = []
+
+    for field in ("trip_type_1", "trip_type_2", "trip_type_3", "trip_type"):
+        value = str(destination.get(field, "")).strip().lower()
+
+        if (
+            value
+            and value not in {"unknown", "none", "nan"}
+            and value not in trip_types
+        ):
+            trip_types.append(value)
+
+    travel_styles = ", ".join(trip_types) if trip_types else "unknown"
+
     return (
         f"{city}, {country}. "
         f"Region: {region or 'unknown'}. "
-        f"Travel style: {trip_type}. "
+        f"Travel styles: {travel_styles}. "
         f"Climate: {climate_tag}. "
         f"Safety score: {safety_score} out of 10. "
         f"Attraction score: {attraction_score} out of 10. "
-        f"Suitable for travelers interested in {trip_type} experiences, "
+        f"Suitable for travelers interested in {travel_styles} experiences, "
         f"local culture, food, sightseeing, neighborhoods, and regional activities."
     )
 

@@ -30,13 +30,15 @@ PLACES_URL = "https://api.geoapify.com/v2/places"
 # is still small, but caps each run to avoid excessive API calls.
 TARGET_INVENTORY_SIZE = 125
 DEFAULT_DISCOVERY_LIMIT = 1
-MAX_DISCOVERY_LIMIT = 1
+MAX_DISCOVERY_LIMIT = 8
+MIN_ADMINISTRATIVE_AREA_CANDIDATES = 5
 
 CSV_COLUMNS = [
     "city",
     "country",
     "region",
     "subregion",
+    "administrative_area",
     "trip_type_1",
     "trip_type_2",
     "trip_type_3",
@@ -58,8 +60,12 @@ DESTINATION_DISCOVERY_SEEDS = {
     "beach": [
         "Maui, Hawaii",
         "Kauai, Hawaii",
+        "Miami, Florida",
+        "Key West, Florida",
+        "Fort Lauderdale, Florida",
+        "Clearwater, Florida",
         "Naples, Florida",
-        "St. Petersburg, Florida",
+        "Saint Petersburg, Florida",
         "Destin, Florida",
         "Virginia Beach, Virginia",
         "Hilton Head Island, South Carolina",
@@ -320,6 +326,10 @@ DESTINATION_DISCOVERY_SEEDS = {
         "Yellowstone National Park, Wyoming",
         "Yosemite National Park, California",
         "Lake Tahoe, California",
+        "Aspen, Colorado",
+        "Breckenridge, Colorado",
+        "Estes Park, Colorado",
+        "Colorado Springs, Colorado",
         "Asheville, North Carolina",
         "Great Smoky Mountains, Tennessee",
         "Reykjavik, Iceland",
@@ -491,6 +501,10 @@ DESTINATION_DISCOVERY_SEEDS = {
     ],
     "adventure": [
         "Moab, Utah",
+        "Aspen, Colorado",
+        "Breckenridge, Colorado",
+        "Estes Park, Colorado",
+        "Colorado Springs, Colorado",
         "Anchorage, Alaska",
         "Banff, Canada",
         "Whistler, Canada",
@@ -640,6 +654,91 @@ COUNTRY_SUBREGION_MAP = {
 }
 
 
+ADMINISTRATIVE_AREA_ALIASES = {
+    "alabama": "Alabama", "alaska": "Alaska", "arizona": "Arizona",
+    "arkansas": "Arkansas", "california": "California", "colorado": "Colorado",
+    "connecticut": "Connecticut", "delaware": "Delaware",
+    "district of columbia": "District of Columbia",
+    "washington dc": "District of Columbia", "washington, dc": "District of Columbia",
+    "florida": "Florida", "georgia": "Georgia", "hawaii": "Hawaii",
+    "idaho": "Idaho", "illinois": "Illinois", "indiana": "Indiana",
+    "iowa": "Iowa", "kansas": "Kansas", "kentucky": "Kentucky",
+    "louisiana": "Louisiana", "maine": "Maine", "maryland": "Maryland",
+    "massachusetts": "Massachusetts", "michigan": "Michigan", "minnesota": "Minnesota",
+    "mississippi": "Mississippi", "missouri": "Missouri", "montana": "Montana",
+    "nebraska": "Nebraska", "nevada": "Nevada", "new hampshire": "New Hampshire",
+    "new jersey": "New Jersey", "new mexico": "New Mexico", "new york": "New York",
+    "north carolina": "North Carolina", "north dakota": "North Dakota",
+    "ohio": "Ohio", "oklahoma": "Oklahoma", "oregon": "Oregon",
+    "pennsylvania": "Pennsylvania", "rhode island": "Rhode Island",
+    "south carolina": "South Carolina", "south dakota": "South Dakota",
+    "tennessee": "Tennessee", "texas": "Texas", "utah": "Utah",
+    "vermont": "Vermont", "virginia": "Virginia", "washington": "Washington",
+    "west virginia": "West Virginia", "wisconsin": "Wisconsin", "wyoming": "Wyoming",
+    "alberta": "Alberta", "british columbia": "British Columbia",
+    "manitoba": "Manitoba", "new brunswick": "New Brunswick",
+    "newfoundland and labrador": "Newfoundland and Labrador",
+    "nova scotia": "Nova Scotia", "ontario": "Ontario",
+    "prince edward island": "Prince Edward Island", "quebec": "Quebec",
+    "saskatchewan": "Saskatchewan", "northwest territories": "Northwest Territories",
+    "nunavut": "Nunavut", "yukon": "Yukon",
+}
+
+
+def _normalize_administrative_area(value: Any) -> str:
+    text = _normalize_text(value)
+    if not text:
+        return ""
+    return ADMINISTRATIVE_AREA_ALIASES.get(text.lower(), text)
+
+
+def detect_requested_administrative_areas(prompt: str) -> set[str]:
+    """Detects explicit U.S. state or Canadian province/territory wording."""
+    prompt_lower = prompt.lower()
+    requested: set[str] = set()
+
+    for alias, canonical in sorted(
+        ADMINISTRATIVE_AREA_ALIASES.items(),
+        key=lambda item: len(item[0]),
+        reverse=True,
+    ):
+        pattern = rf"(?<!\w){re.escape(alias)}(?!\w)"
+        if re.search(pattern, prompt_lower):
+            requested.add(canonical)
+
+    return requested
+
+
+def _seed_administrative_area(seed: str) -> str:
+    parts = [part.strip() for part in seed.split(",") if part.strip()]
+    if len(parts) < 2:
+        return ""
+    return ADMINISTRATIVE_AREA_ALIASES.get(parts[1].lower(), "")
+
+
+def _infer_administrative_area_from_seed(city: Any) -> str:
+    city_key = _normalize_text(city).lower()
+    if not city_key:
+        return ""
+
+    for seeds in DESTINATION_DISCOVERY_SEEDS.values():
+        for seed in seeds:
+            if seed.split(",")[0].strip().lower() != city_key:
+                continue
+            administrative_area = _seed_administrative_area(seed)
+            if administrative_area:
+                return administrative_area
+
+    return ""
+
+
+def get_destination_administrative_area(destination: dict[str, Any]) -> str:
+    saved = _normalize_administrative_area(destination.get("administrative_area"))
+    if saved:
+        return saved
+    return _infer_administrative_area_from_seed(destination.get("city"))
+
+
 def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -672,6 +771,7 @@ def _ensure_csv_schema(df: pd.DataFrame) -> pd.DataFrame:
         "country": "",
         "region": "",
         "subregion": "",
+        "administrative_area": "",
         "trip_type_1": "unknown",
         "trip_type_2": "unknown",
         "trip_type_3": "unknown",
@@ -701,6 +801,20 @@ def _ensure_csv_schema(df: pd.DataFrame) -> pd.DataFrame:
         else:
             df[column] = df[column].where(df[column].notna(), None)
 
+    if "administrative_area" in df.columns:
+        admin_missing = (
+            df["administrative_area"]
+            .fillna("")
+            .astype(str)
+            .str.strip()
+            .str.lower()
+            .isin({"", "unknown", "none", "nan"})
+        )
+        if admin_missing.any():
+            df.loc[admin_missing, "administrative_area"] = df.loc[
+                admin_missing, "city"
+            ].apply(_infer_administrative_area_from_seed)
+
     # Migrate any remaining legacy trip_type values into trip_type_1.
     if "trip_type" in df.columns:
         legacy = df["trip_type"].fillna("unknown").astype(str)
@@ -727,6 +841,52 @@ def load_locations() -> list[dict[str, Any]]:
 def clear_location_cache() -> None:
     """Clears the cached destination inventory after a CSV update."""
     load_locations.cache_clear()
+
+
+def repair_missing_administrative_areas() -> int:
+    """
+    Persistently backfills blank state/province/territory values when the
+    curated destination seed inventory provides deterministic evidence.
+
+    This intentionally avoids an external API call for locations GreenBookAI
+    already knows, such as Key West -> Florida or Denver -> Colorado.
+
+    Returns the number of CSV rows updated.
+    """
+    if not TRAVEL_LOCATIONS_FILE.exists():
+        return 0
+
+    df = pd.read_csv(TRAVEL_LOCATIONS_FILE)
+
+    if "administrative_area" not in df.columns:
+        df["administrative_area"] = ""
+
+    updated = 0
+
+    for index, row in df.iterrows():
+        current = _normalize_administrative_area(
+            row.get("administrative_area")
+        )
+
+        if current:
+            continue
+
+        inferred = _infer_administrative_area_from_seed(
+            row.get("city")
+        )
+
+        if not inferred:
+            continue
+
+        df.at[index, "administrative_area"] = inferred
+        updated += 1
+
+    if updated:
+        df = _ensure_csv_schema(df)
+        df.to_csv(TRAVEL_LOCATIONS_FILE, index=False)
+        clear_location_cache()
+
+    return updated
 
 
 def get_location_by_city(city_name: str, country_name: str | None = None):
@@ -847,10 +1007,18 @@ def discover_location(city_name: str):
     latitude = result.get("lat")
     longitude = result.get("lon")
 
+    administrative_area = (
+        result.get("state")
+        or result.get("state_district")
+        or result.get("county")
+        or ""
+    )
+
     location = {
         "city": city,
         "country": country,
         "region": result.get("continent", ""),
+        "administrative_area": _normalize_administrative_area(administrative_area),
         "latitude": latitude,
         "longitude": longitude,
     }
@@ -864,6 +1032,7 @@ def discover_location(city_name: str):
         "country": country,
         "region": location["region"],
         "subregion": location["subregion"],
+        "administrative_area": location["administrative_area"],
         "trip_type_1": "unknown",
         "trip_type_2": "unknown",
         "trip_type_3": "unknown",
@@ -985,6 +1154,9 @@ def save_location(location: dict[str, Any]):
         "country": enriched.get("country"),
         "region": enriched.get("region", ""),
         "subregion": enriched.get("subregion", ""),
+        "administrative_area": _normalize_administrative_area(
+            enriched.get("administrative_area")
+        ),
         "trip_type_1": trip_types[0],
         "trip_type_2": trip_types[1],
         "trip_type_3": trip_types[2],
@@ -1072,6 +1244,7 @@ def _seed_matches_prompt_geography(seed: str, prompt: str) -> bool:
 def _ordered_discovery_seeds(prompt: str) -> list[tuple[str, str]]:
     """Builds a deduplicated, prompt-relevant discovery queue."""
     requested_types = _detect_requested_trip_types(prompt)
+    requested_administrative_areas = detect_requested_administrative_areas(prompt)
     category_order = requested_types + [
         category for category in DESTINATION_DISCOVERY_SEEDS if category not in requested_types
     ]
@@ -1082,6 +1255,11 @@ def _ordered_discovery_seeds(prompt: str) -> list[tuple[str, str]]:
 
     for category in category_order:
         for seed in DESTINATION_DISCOVERY_SEEDS.get(category, []):
+            if requested_administrative_areas:
+                seed_area = _seed_administrative_area(seed)
+                if seed_area not in requested_administrative_areas:
+                    continue
+
             key = seed.strip().lower()
             if key in seen:
                 continue
@@ -1110,9 +1288,38 @@ def discover_destination_candidates(prompt: str, limit: int = DEFAULT_DISCOVERY_
     requested_types = _detect_requested_trip_types(prompt)
     climate_tag = _detect_climate_tag(prompt)
 
-    inventory_gap = max(0, TARGET_INVENTORY_SIZE - current_size)
-    aggressive_bonus = min(13, inventory_gap) if inventory_gap else 0
-    effective_limit = min(MAX_DISCOVERY_LIMIT, max(0, limit))
+    # Ordinary requests remain conservative so inventory growth does not create
+    # unnecessary geocoding/enrichment calls. When the traveler explicitly names
+    # a state/province/territory, however, GreenBookAI expands that area enough
+    # to support a meaningful local comparison in the same request.
+    requested_administrative_areas = detect_requested_administrative_areas(prompt)
+
+    effective_limit = min(
+        MAX_DISCOVERY_LIMIT,
+        max(0, limit),
+    )
+
+    if requested_administrative_areas:
+        existing_in_requested_area = sum(
+            1
+            for location in existing_locations
+            if get_destination_administrative_area(location)
+            in requested_administrative_areas
+        )
+
+        area_deficit = max(
+            0,
+            MIN_ADMINISTRATIVE_AREA_CANDIDATES
+            - existing_in_requested_area,
+        )
+
+        # Discover the number actually needed to build a useful candidate pool.
+        # Example: if Colorado has only Denver, discover up to four additional
+        # Colorado destinations during this request rather than one per run.
+        effective_limit = min(
+            MAX_DISCOVERY_LIMIT,
+            max(effective_limit, area_deficit),
+        )
 
     existing_keys = {
         _normalize_city_key(location.get("city"), location.get("country"))

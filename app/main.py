@@ -1,10 +1,12 @@
 import os
+import threading
+import uuid
 from contextlib import asynccontextmanager
 from typing import Optional
 
 import requests
 from dotenv import load_dotenv
-from fastapi import BackgroundTasks, FastAPI, Query
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from app.services.llm_service import generate_ai_recommendation
@@ -19,15 +21,12 @@ load_dotenv()
 GEOAPIFY_API_KEY = os.getenv("GEOAPIFY_API_KEY")
 OPENWEATHER_API_KEY = os.getenv("OPENWEATHER_API_KEY")
 
+RECOMMENDATION_JOBS = {}
+RECOMMENDATION_JOBS_LOCK = threading.Lock()
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """
-    Keeps API startup fast.
-
-    Slow destination enrichment is intentionally not run here. Use the
-    maintenance endpoint to process a small batch in the background.
-    """
     print("GreenBookAI backend starting.")
     yield
     print("GreenBookAI backend shutting down.")
@@ -52,10 +51,6 @@ def start_destination_enrichment(
     background_tasks: BackgroundTasks,
     limit: int = Query(default=3, ge=1, le=10),
 ):
-    """
-    Enriches a controlled number of incomplete CSV rows without blocking
-    the HTTP response or FastAPI startup.
-    """
     background_tasks.add_task(enrich_incomplete_locations, limit)
 
     return {
@@ -120,9 +115,7 @@ class TripRequest(BaseModel):
         default="Boston",
         description="Starting city. Defaults to Boston when omitted.",
     )
-
     prompt: str
-
     budget: Optional[float] = Field(
         default=None,
         description=(
@@ -132,8 +125,129 @@ class TripRequest(BaseModel):
     )
 
 
+def _set_job_progress(job_id, progress, stage):
+    with RECOMMENDATION_JOBS_LOCK:
+        job = RECOMMENDATION_JOBS.get(job_id)
+        if not job:
+            return
+
+        job["progress"] = max(
+            int(job.get("progress", 0)),
+            min(int(progress), 99),
+        )
+        job["stage"] = str(stage)
+
+
+def _run_recommendation_job(job_id, request_data):
+    try:
+        resolved_budget = resolve_budget(
+            prompt=request_data["prompt"],
+            budget=request_data.get("budget"),
+        )
+
+        _set_job_progress(job_id, 3, "Starting recommendation...")
+
+        recommendations = get_recommendations(
+            start_destination=request_data["start_destination"],
+            prompt=request_data["prompt"],
+            budget=resolved_budget,
+            progress_callback=lambda progress, stage: _set_job_progress(
+                job_id,
+                progress,
+                stage,
+            ),
+        )
+
+        _set_job_progress(
+            job_id,
+            96,
+            "Generating recommendation explanation...",
+        )
+
+        ai_recommendation = generate_ai_recommendation(
+            user_prompt=request_data["prompt"],
+            budget=resolved_budget,
+            recommendations=recommendations,
+        )
+
+        result = {
+            "user_prompt": request_data["prompt"],
+            "start_destination": request_data["start_destination"],
+            "budget": resolved_budget,
+            "ai_recommendation": ai_recommendation,
+            "recommendations": recommendations,
+        }
+
+        with RECOMMENDATION_JOBS_LOCK:
+            RECOMMENDATION_JOBS[job_id].update({
+                "status": "complete",
+                "progress": 100,
+                "stage": "Your recommendations are ready.",
+                "result": result,
+                "error": None,
+            })
+
+    except Exception as error:
+        with RECOMMENDATION_JOBS_LOCK:
+            RECOMMENDATION_JOBS[job_id].update({
+                "status": "failed",
+                "stage": "Recommendation failed.",
+                "error": str(error),
+            })
+
+
+@app.post("/recommend/start")
+def start_recommendation(request: TripRequest):
+    job_id = str(uuid.uuid4())
+
+    request_data = {
+        "start_destination": request.start_destination,
+        "prompt": request.prompt,
+        "budget": request.budget,
+    }
+
+    with RECOMMENDATION_JOBS_LOCK:
+        RECOMMENDATION_JOBS[job_id] = {
+            "job_id": job_id,
+            "status": "running",
+            "progress": 0,
+            "stage": "Queued...",
+            "result": None,
+            "error": None,
+        }
+
+    worker = threading.Thread(
+        target=_run_recommendation_job,
+        args=(job_id, request_data),
+        daemon=True,
+    )
+    worker.start()
+
+    return {
+        "job_id": job_id,
+        "status": "running",
+        "progress": 0,
+        "stage": "Queued...",
+    }
+
+
+@app.get("/recommend/status/{job_id}")
+def recommendation_status(job_id: str):
+    with RECOMMENDATION_JOBS_LOCK:
+        job = RECOMMENDATION_JOBS.get(job_id)
+        if job is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Recommendation job not found",
+            )
+        return dict(job)
+
+
 @app.post("/recommend")
 def recommend_trip(request: TripRequest):
+    """
+    Backward-compatible synchronous endpoint.
+    """
     resolved_budget = resolve_budget(
         prompt=request.prompt,
         budget=request.budget,

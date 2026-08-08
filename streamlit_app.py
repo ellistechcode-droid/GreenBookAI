@@ -1,16 +1,16 @@
 import base64
+import time
 from pathlib import Path
 from typing import Any
 
 import requests
 import streamlit as st
 
-
-API_URL = "http://127.0.0.1:8000/recommend"
+API_BASE_URL = "http://127.0.0.1:8000"
+START_RECOMMENDATION_URL = f"{API_BASE_URL}/recommend/start"
 
 LOGO_PATH = Path("assets/logo.png")
 BACKGROUND_PATH = Path("assets/Background.gif")
-
 
 st.set_page_config(
     page_title="GreenBookAI",
@@ -125,6 +125,18 @@ def set_animated_background(background_path: Path) -> None:
             transform: scale(1.01);
         }}
 
+        [data-testid="stMarkdownContainer"],
+        [data-testid="stMarkdownContainer"] p,
+        [data-testid="stMarkdownContainer"] li,
+        [data-testid="stMarkdownContainer"] span,
+        [data-testid="stMarkdownContainer"] strong,
+        [data-testid="stMarkdownContainer"] em {{
+            font-family: Arial, Helvetica, sans-serif !important;
+            letter-spacing: normal !important;
+            word-spacing: normal !important;
+            font-kerning: normal !important;
+        }}
+
         @media (max-width: 900px) {{
             .block-container {{
                 padding-top: 1.5rem;
@@ -136,11 +148,11 @@ def set_animated_background(background_path: Path) -> None:
     )
 
 
-def request_recommendations(
+def start_recommendation_job(
     start_destination: str,
     prompt: str,
     budget: float | None,
-) -> dict[str, Any]:
+) -> str:
     payload = {
         "start_destination": start_destination.strip(),
         "prompt": prompt.strip(),
@@ -148,17 +160,75 @@ def request_recommendations(
     }
 
     response = requests.post(
-        API_URL,
+        START_RECOMMENDATION_URL,
         json=payload,
-        timeout=180,
+        timeout=20,
     )
-
     response.raise_for_status()
-    return response.json()
+
+    data = response.json()
+    job_id = data.get("job_id")
+
+    if not job_id:
+        raise RuntimeError(
+            "The backend did not return a recommendation job ID."
+        )
+
+    return job_id
+
+
+def wait_for_recommendation(
+    job_id: str,
+    progress,
+) -> dict[str, Any]:
+    """Polls real backend progress and updates the Streamlit progress bar."""
+    status_url = f"{API_BASE_URL}/recommend/status/{job_id}"
+
+    while True:
+        response = requests.get(
+            status_url,
+            timeout=15,
+        )
+        response.raise_for_status()
+        job = response.json()
+
+        percent = int(job.get("progress", 0))
+        percent = max(0, min(percent, 100))
+        stage = str(job.get("stage") or "Working...")
+
+        progress.progress(
+            percent,
+            text=f"{stage} — {percent}%",
+        )
+
+        status = job.get("status")
+
+        if status == "complete":
+            result = job.get("result")
+            if not isinstance(result, dict):
+                raise RuntimeError(
+                    "The recommendation job completed without a valid result."
+                )
+            return result
+
+        if status == "failed":
+            raise RuntimeError(
+                job.get("error")
+                or "The recommendation job failed."
+            )
+
+        time.sleep(0.5)
+
+
+def format_ai_recommendation(text: str) -> str:
+    """Prepares AI recommendation text for safe Streamlit Markdown rendering."""
+    if not text:
+        return "No AI recommendation was returned."
+
+    return text.replace("$", r"\$")
 
 
 set_animated_background(BACKGROUND_PATH)
-
 
 left_column, right_column = st.columns(
     [1.05, 1.35],
@@ -166,18 +236,16 @@ left_column, right_column = st.columns(
     vertical_alignment="top",
 )
 
-
 with left_column:
     if LOGO_PATH.exists():
         st.image(
             str(LOGO_PATH),
-            use_container_width=True,
+            width="stretch",
         )
     else:
         st.warning(
             f"Logo image was not found at: {LOGO_PATH}"
         )
-
 
 with right_column:
     with st.form("trip_search_form"):
@@ -196,28 +264,19 @@ with right_column:
             height=130,
         )
 
-      #  avoid_prompt = st.text_area(
-      #      "Preferences to avoid",
-      #      placeholder=(
-      #          "Example: Cold weather, hostels, long layovers, "
-      #          "or overly crowded destinations."
-      #      ),
-      #      height=100,
-      #  )
-
         budget_input = st.number_input(
-            "Maximum budget in USD",
+            "Maximum budget in USD (optional if included in prompt)",
             min_value=0.0,
-            value=2500.0,
+            value=None,
             step=100.0,
+            placeholder="Example: 2500",
         )
 
         submitted = st.form_submit_button(
             "Find My Trip",
-            use_container_width=True,
+            width="stretch",
             type="primary",
         )
-
 
 if submitted:
     if not start_destination.strip():
@@ -229,54 +288,25 @@ if submitted:
     else:
         combined_prompt = trip_prompt.strip()
 
-       # if avoid_prompt.strip():
-       #     combined_prompt += (
-       #         "\n\nThe traveler would prefer to avoid: "
-       #         + avoid_prompt.strip()
-       #         + ". Treat these as preferences rather than "
-       #         "guaranteed exclusions."
-       #     )
-
         progress = st.progress(
             0,
-            text="Understanding your trip request...",
+            text="Queued... — 0%",
         )
 
         try:
-            progress.progress(
-                20,
-                text="Understanding your trip request...",
-            )
-
-            progress.progress(
-                40,
-                text="Searching destinations...",
-            )
-
-            progress.progress(
-                55,
-                text="Checking weather and travel advisories...",
-            )
-
-            progress.progress(
-                70,
-                text="Finding flight and lodging estimates...",
-            )
-
-            result = request_recommendations(
+            job_id = start_recommendation_job(
                 start_destination=start_destination,
                 prompt=combined_prompt,
-                budget=budget_input if budget_input > 0 else None,
+                budget=(
+                    budget_input
+                    if budget_input is not None and budget_input > 0
+                    else None
+                ),
             )
 
-            progress.progress(
-                90,
-                text="Generating your AI recommendation...",
-            )
-
-            progress.progress(
-                100,
-                text="Your recommendations are ready.",
+            result = wait_for_recommendation(
+                job_id=job_id,
+                progress=progress,
             )
 
             st.success(
@@ -284,12 +314,15 @@ if submitted:
             )
 
             st.subheader("AI Recommendation")
-            st.write(
+
+            ai_recommendation = format_ai_recommendation(
                 result.get(
                     "ai_recommendation",
                     "No AI recommendation was returned.",
                 )
             )
+
+            st.markdown(ai_recommendation)
 
             st.subheader("Recommendation Data")
 
@@ -302,7 +335,7 @@ if submitted:
                 st.json(recommendations)
             else:
                 st.warning(
-                    "The backend returned no destinations."
+                    "The backend returned no viable destinations."
                 )
 
             with st.expander("Full API response"):
@@ -316,8 +349,8 @@ if submitted:
 
         except requests.exceptions.Timeout:
             st.error(
-                "The recommendation request took too long. "
-                "Try again or check the backend terminal for errors."
+                "A GreenBookAI network request timed out. "
+                "Check the backend terminal for errors."
             )
 
         except requests.exceptions.HTTPError as error:
@@ -325,8 +358,8 @@ if submitted:
                 f"The backend returned an error: {error}"
             )
 
-        except requests.exceptions.RequestException as error:
+        except (requests.exceptions.RequestException, RuntimeError) as error:
             st.error(
-                "Something went wrong while contacting the backend: "
+                "Something went wrong while generating recommendations: "
                 f"{error}"
             )
