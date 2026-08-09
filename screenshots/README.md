@@ -1,219 +1,462 @@
-# GreenBookAI
+GreenBookAI
 
-## Overview
+Overview
 
-GreenBookAI is an AI-powered travel recommendation application developed as part of a graduate capstone project at Wentworth Institute of Technology. The system recommends vacation destinations by combining real-time travel information, historical climate data, travel advisories, safety metrics, estimated trip costs, flight logistics, and destination characteristics into a single recommendation engine.
+GreenBookAI is an AI-assisted travel decision-support application developed as a graduate capstone project at Wentworth Institute of Technology.
 
-Unlike traditional travel search engines that primarily filter destinations, GreenBookAI evaluates multiple contextual factors simultaneously to recommend destinations that best align with a traveler's preferences.
+The system transforms natural-language travel requests into ranked destination recommendations by combining explicit constraint filtering, semantic retrieval, deterministic scoring, live travel-data enrichment, and evidence-grounded natural-language explanations.
 
----
+Rather than allowing a large language model to determine destination rankings, GreenBookAI separates recommendation computation from explanation generation. Destination ordering is produced by a two-stage deterministic ranking pipeline, while Gemini is used only after ranking to explain the resulting recommendations.
 
-## Current Features
+Key Features
 
-- Natural language travel requests
-- Origin-aware trip recommendations
-- Automatic location discovery
-- Persistent location storage
-- Real-time weather integration
-- Historical seasonal climate analysis
-- International travel advisory integration
-- Budget-aware recommendations
-- Safety scoring
-- Destination attraction scoring
-- Google Flights connectivity through SerpAPI
-- Modular service-oriented backend architecture
+Natural-language travel requests
 
----
+Origin-aware trip recommendations
 
-## Example Request
+Explicit geographic and trip-type constraint filtering
 
-```json
-{
-    "start_destination": "Boston",
-    "prompt": "I want a warm beach vacation for 5 nights in February. Safety is important.",
-    "budget": 1800
-}
-```
+Semantic destination retrieval using Jina embeddings
 
----
+Cosine-similarity scoring
 
-## Recommendation Methodology
+Persistent destination embedding cache
 
-The current recommendation engine uses a weighted scoring algorithm:
+Two-stage deterministic recommendation scoring
 
-```text
-Recommendation Score =
-Trip Type Match
-+ Current Weather Match
-+ Historical Seasonal Weather Match
-+ Budget Compatibility
-+ Safety Score
-+ Destination Attraction Score
-− Travel Advisory Penalty
-```
+Budget-aware trip evaluation
 
-Each destination is evaluated against the user's natural language request. The recommendation engine currently considers trip type compatibility, preferred climate, current weather, historical weather during the intended travel month, estimated trip cost, safety score, destination attraction score, and travel advisories.
+Five-year historical seasonal climate analysis
 
-Destinations that significantly exceed the user's budget are filtered before scoring. The five highest-ranked destinations are returned with explanations describing why each location was selected.
+Current weather integration
 
----
+Live Google Flights data through SerpAPI
 
-## System Architecture
+Live lodging search and pricing through SerpAPI
 
-- **Recommendation Service**
-  - Coordinates the recommendation pipeline
-  - Combines all supporting services
-  - Calculates destination rankings
+Flight duration, connection, and layover analysis
 
-- **Location Service**
-  - Automatic location discovery
-  - Persistent location storage
-  - Dataset caching
-  - Candidate location retrieval
+GOV.UK international travel-advisory integration
 
-- **Weather Service**
-  - Current weather retrieval
-  - Historical seasonal weather analysis
+Destination safety and attraction scoring
 
-- **Advisory Service**
-  - Travel advisory retrieval
-  - Travel risk scoring
+Live-data viability filtering
 
-- **Travel Logistics Service**
-  - Google Flights integration through SerpAPI
-  - Flight pricing
-  - Flight duration
-  - Travel practicality analysis
-  - Planned hotel pricing
+Automatic candidate replenishment
 
----
+Automatic location discovery through Geoapify
 
-## APIs Required
+Persistent storage of newly discovered destinations
 
-To run the full version of GreenBookAI, create API keys for the following services:
+Gemini-generated recommendation explanations
 
-| API | Purpose | Required Environment Variable |
-|---|---|---|
-| Geoapify | Geocoding and automatic location discovery | `GEOAPIFY_API_KEY` |
-| OpenWeather | Current weather conditions | `OPENWEATHER_API_KEY` |
-| SerpAPI | Google Flights data and future hotel search | `SERPAPI_API_KEY` |
-| GOV.UK Travel Advice | Travel advisory data | No key required |
-| Open-Meteo Archive API | Historical seasonal weather data | No key required |
+Deterministic explanation fallback
 
-Create a `.env` file in the project root:
+FastAPI backend
 
-```env
-GEOAPIFY_API_KEY=your_geoapify_key_here
-OPENWEATHER_API_KEY=your_openweather_key_here
-SERPAPI_API_KEY=your_serpapi_key_here
-```
+Streamlit web interface
 
----
+Example Travel Request
 
-## Technologies and Packages
+I want a warm beach vacation for 5 nights in February.
+My budget is $1,800 and safety is important.
 
-GreenBookAI uses Python 3.12 and the following packages:
+Boston is used as the default starting destination in the current application.
 
-```text
-fastapi
-uvicorn
-pandas
-numpy
-pydantic
-requests
-beautifulsoup4
-python-dotenv
-```
+Recommendation Pipeline
 
-Install the dependencies with:
+Natural-Language Travel Request
+        |
+        v
+Request Parsing
+        |
+        v
+Explicit Constraint Filtering
+        |
+        v
+Semantic Retrieval
+(Jina Embeddings + Cosine Similarity)
+        |
+        v
+Preliminary Deterministic Scoring
+        |
+        v
+Candidate Shortlist
+        |
+        v
+Live / Historical Data Enrichment
+  - Flights
+  - Lodging
+  - Current Weather
+  - Historical Seasonal Climate
+  - Travel Advisories
+        |
+        v
+Final Deterministic Scoring
+        |
+        v
+Live-Data Viability Filtering
+        |
+        v
+Candidate Replenishment if Needed
+        |
+        v
+Final Ranked Recommendations
+        |
+        v
+Gemini Explanation Generation
 
-```bash
-pip install fastapi uvicorn pandas numpy pydantic requests beautifulsoup4 python-dotenv
-```
+Gemini does not determine destination order. It receives structured evidence only after ranking has been completed.
 
-If using a `requirements.txt` file, install with:
+APIs and External Services
 
-```bash
+Credentials Required
+
+Service
+
+Purpose
+
+Geoapify
+
+Geocoding and automatic destination discovery
+
+OpenWeather
+
+Current weather information
+
+SerpAPI
+
+Live Google Flights and lodging information
+
+Jina AI
+
+Query and destination embeddings for semantic retrieval
+
+Google Gemini
+
+Natural-language recommendation explanations
+
+No API Key Required
+
+Service
+
+Purpose
+
+Open-Meteo
+
+Historical climate observations
+
+GOV.UK Travel Advice
+
+International travel-advisory information
+
+You must obtain credentials for the services in the first table for all application features to operate.
+
+Important: Environment-variable names must exactly match the names referenced by the current application source. Never commit API keys or the .env file to a public repository.
+
+Installation and Setup
+
+Prerequisites
+
+Install Python 3.12, Git, and pip.
+
+Verify them with:
+
+python --version
+git --version
+pip --version
+
+1. Clone the Repository
+
+git clone <repository-url>
+cd GreenBookAI
+
+Replace <repository-url> with the repository's Git URL.
+
+2. Create a Virtual Environment
+
+python -m venv .venv
+
+Windows Git Bash
+
+source .venv/Scripts/activate
+
+Windows PowerShell
+
+.venv\Scripts\Activate.ps1
+
+macOS/Linux
+
+source .venv/bin/activate
+
+3. Install Dependencies
+
+python -m pip install --upgrade pip
 pip install -r requirements.txt
-```
 
----
+requirements.txt is the authoritative dependency list for the repository.
 
-## Running the Application
+4. Configure API Credentials
 
-From the project root, start the FastAPI server with:
+Create a .env file in the project root.
 
-```bash
+The application requires credentials for Geoapify, OpenWeather, SerpAPI, Jina AI, and Gemini. The exact variable names must match those referenced by the current source code.
+
+A typical configuration is:
+
+GEOAPIFY_API_KEY=your_key_here
+OPENWEATHER_API_KEY=your_key_here
+SERPAPI_API_KEY=your_key_here
+JINA_API_KEY=your_key_here
+GEMINI_API_KEY=your_key_here
+
+If the current source uses different names, use the source-defined names instead.
+
+Make sure .env is excluded by .gitignore.
+
+Running the Application
+
+GreenBookAI has two locally running components:
+
+FastAPI backend
+
+Streamlit frontend
+
+Both should be running for the complete application.
+
+Terminal 1 — Start FastAPI
+
+From the project root with the virtual environment activated:
+
 uvicorn app.main:app --reload
-```
 
-Then open the interactive API documentation at:
+Backend:
 
-```text
+http://127.0.0.1:8000
+
+FastAPI interactive documentation:
+
 http://127.0.0.1:8000/docs
-```
 
-Use the `/recommend` endpoint to test trip recommendations.
+Leave this terminal running.
 
----
+Terminal 2 — Start Streamlit
 
-## Current Data Source
+Open a second terminal in the repository directory and activate the same virtual environment.
 
-Destination and location data are stored in:
+On Windows Git Bash:
 
-```text
+source .venv/Scripts/activate
+
+Then run:
+
+streamlit run streamlit_app.py
+
+Streamlit normally displays a local address similar to:
+
+http://localhost:8501
+
+Open that address in a browser and leave both terminals running.
+
+Quick Start — Existing Windows Git Bash Installation
+
+Terminal 1
+
+source .venv/Scripts/activate
+uvicorn app.main:app --reload
+
+Terminal 2
+
+source .venv/Scripts/activate
+streamlit run streamlit_app.py
+
+Stopping the Application
+
+Press Ctrl+C in both terminals.
+
+Then deactivate the virtual environment:
+
+deactivate
+
+Semantic Retrieval and Ranking
+
+The user's travel request is embedded as a Jina query, while destination descriptions are represented as passage embeddings. Cosine similarity measures semantic alignment.
+
+semantic_similarity = cosine(query_embedding, destination_embedding)
+
+The first ranking stage combines explicit constraints, local destination attributes, trip-type compatibility, climate preference, budget information, safety, attraction value, and semantic similarity.
+
+Shortlisted candidates are then enriched with live flight and lodging information, current weather, five-year historical seasonal climate data, and international travel advisories before deterministic reranking.
+
+Final recommendations must also satisfy live flight and lodging viability requirements. If too few viable destinations remain, the candidate pool can be replenished.
+
+Current Data
+
+The primary destination inventory is stored in:
+
 data/travel_locations.csv
-```
 
-The dataset includes fields such as:
+The final capstone dataset contains:
 
-- City
-- Country
-- Region
-- Trip type
-- Climate tag
-- Estimated nightly cost
-- Safety score
-- Attraction score
-- Latitude
-- Longitude
+199 destination records
+17 fields
 
-When a starting location is not found in the dataset, the Location Service can discover it using Geoapify and append it to the CSV for future use.
+The inventory includes attributes used for filtering, semantic retrieval, scoring, enrichment, and travel planning.
 
----
+Unknown locations can be discovered through Geoapify and persisted for later use.
 
-## Recent Improvements
+Embedding Cache
 
-Recent development milestones include:
+Destination embeddings are stored in:
 
-- Created a centralized Location Service for location management
-- Implemented automatic discovery of unknown locations using Geoapify
-- Added persistent storage of newly discovered locations
-- Implemented dataset caching for improved performance
-- Developed a modular Travel Logistics Service
-- Connected GreenBookAI to Google Flights data through SerpAPI
-- Added international travel advisory scoring
-- Refactored the application into a modular service-oriented architecture
+data/destination_embeddings.json
 
----
+The cache reduces repeated embedding requests for destination descriptions that have already been processed.
 
-## Future Enhancements
+Technology Stack
 
-Planned improvements include:
+The project uses technologies including:
 
-- Live hotel pricing
-- Flight practicality filtering based on travel duration and number of connections
-- Automatic airport code discovery and storage
-- Dynamic attraction scoring using live attraction data
-- More detailed travel advisory explanations, including affected regions and traveler-specific guidance
-- Expanded destination inventory
-- Interactive web-based user interface
-- Transition from the current weighted scoring algorithm to a K-Nearest Neighbors recommendation model
+Python 3.12
 
-In the planned KNN implementation, the user's natural language prompt will be transformed into a structured, prompt-generated ideal trip profile. Candidate destinations will then be compared against that profile using similarity distance to recommend the destinations that most closely match the user's travel preferences.
+FastAPI
 
----
+Uvicorn
 
-## Development Status
+Streamlit
 
-GreenBookAI is an active graduate capstone project currently under development. The application demonstrates how multiple real-time travel data sources can be integrated into a unified recommendation engine while providing a scalable architecture for future machine learning enhancements and intelligent travel planning capabilities.
+Pydantic
+
+Pandas
+
+NumPy
+
+Requests
+
+BeautifulSoup
+
+python-dotenv
+
+Jina AI
+
+Google Gemini
+
+SerpAPI
+
+Install the repository-defined dependencies with:
+
+pip install -r requirements.txt
+
+Project Structure
+
+GreenBookAI/
+├── app/
+│   └── main.py
+├── assets/
+│   ├── Background.gif
+│   └── logo.png
+├── data/
+│   ├── destination_embeddings.json
+│   └── travel_locations.csv
+├── screenshots/
+├── .env
+├── .gitignore
+├── requirements.txt
+├── streamlit_app.py
+└── README.md
+
+Do not commit .env or API credentials to the repository.
+
+Evaluation
+
+The final capstone evaluation used nine completed scenario-based travel requests and produced 44 final recommendations.
+
+The strongest observed behavior involved:
+
+Explicit numeric budgets
+
+Dates and trip durations
+
+Positive travel categories
+
+Supported geographic restrictions
+
+The evaluation also identified limitations involving:
+
+Negative preference interpretation
+
+Relative preference-priority language
+
+Lodging geographic validation
+
+Accommodation classification
+
+Missing travel-advisory states
+
+Extremely long flight itineraries
+
+These results evaluate the implemented prototype and do not establish that its rankings are objectively optimal or superior to other recommendation systems.
+
+Known Limitations
+
+Ranking weights are developer-defined rather than learned from user behavior.
+
+Some natural-language exclusions are not consistently converted into hard constraints.
+
+Relative priority statements do not always modify ranking weights.
+
+External lodging results can require stronger geographic validation.
+
+Accommodation-type filtering can misclassify some properties.
+
+Travel-advisory information may be unavailable for some destinations.
+
+Very long flight itineraries can remain viable when other destination characteristics score highly.
+
+Static safety, attraction, and fallback cost attributes are prototype ranking values rather than validated real-time measurements.
+
+Live flight and lodging information can change after a recommendation is generated.
+
+Historical seasonal climate data provide historical context rather than a forecast.
+
+Recommendation-job storage is not durable across backend restarts.
+
+No labeled relevance dataset or baseline recommender was used to establish objective ranking superiority.
+
+Future Work
+
+Future improvements identified during evaluation include:
+
+Explicit representation of negative preferences
+
+Separation of hard constraints and soft preferences
+
+Improved interpretation of preference-priority language
+
+Geographic validation of lodging properties
+
+Stronger accommodation-type validation
+
+Explicit handling of unavailable travel-advisory evidence
+
+Flight-practicality penalties relative to total trip duration
+
+Sensitivity analysis for deterministic scoring weights
+
+Persistent recommendation-job storage
+
+More consistent external-service caching
+
+User studies evaluating recommendation and explanation usefulness
+
+Evaluation against independently judged destination relevance
+
+Comparison of deterministic ranking with learned ranking methods if suitable interaction or relevance data become available
+
+Development Status
+
+GreenBookAI is a functional graduate capstone prototype developed at Wentworth Institute of Technology.
+
+The completed system demonstrates how explicit constraints, semantic retrieval, deterministic decision rules, live travel information, historical climate evidence, and generative explanations can be combined in an inspectable travel recommendation architecture.
+
+The project is intended as a decision-support prototype rather than a production travel-booking platform. Live travel information should be independently verified before making travel or purchasing decisions.
